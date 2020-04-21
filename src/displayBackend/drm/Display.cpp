@@ -190,17 +190,17 @@ DisplayItf::ConnectorPtr Display::createConnector(const string& name)
 }
 
 DisplayBufferPtr Display::createDisplayBuffer(uint32_t width, uint32_t height,
-											 uint32_t bpp)
+											 uint32_t bpp, size_t offset)
 {
 	lock_guard<mutex> lock(mMutex);
 
 	LOG(mLog, DEBUG) << "Create display buffer";
 
-	return DisplayBufferPtr(new DumbDrm(mDrmFd, width, height, bpp));
+	return DisplayBufferPtr(new DumbDrm(mDrmFd, width, height, bpp, offset));
 }
 
 DisplayBufferPtr Display::createDisplayBuffer(
-		uint32_t width, uint32_t height, uint32_t bpp,
+		uint32_t width, uint32_t height, uint32_t bpp, size_t offset,
 		domid_t domId, DisplayItf::GrantRefs& refs, bool allocRefs)
 {
 	lock_guard<mutex> lock(mMutex);
@@ -216,7 +216,7 @@ DisplayBufferPtr Display::createDisplayBuffer(
 	}
 
 	return DisplayBufferPtr(new DumbZCopyFrontDrm(mDrmFd,
-												  width, height, bpp,
+												  width, height, bpp, offset,
 												  domId, refs));
 #else
 	LOG(mLog, DEBUG) << "Create display buffer";
@@ -226,7 +226,7 @@ DisplayBufferPtr Display::createDisplayBuffer(
 		throw  Exception("Can't allocate refs: ZCopy disabled", EINVAL);
 	}
 
-	return DisplayBufferPtr(new DumbDrm(mDrmFd, width, height, bpp,
+	return DisplayBufferPtr(new DumbDrm(mDrmFd, width, height, bpp, offset,
 										domId, refs));
 #endif
 }
@@ -398,7 +398,7 @@ void Display::handleFlipEvent(int fd, unsigned int sequence,
 
 #if defined(WITH_WAYLAND) && defined(WITH_ZCOPY)
 DisplayBufferPtr DisplayWayland::createDisplayBuffer(
-		uint32_t width, uint32_t height, uint32_t bpp,
+		uint32_t width, uint32_t height, uint32_t bpp, size_t offset,
 		domid_t domId, GrantRefs& refs, bool allocRefs)
 {
 	lock_guard<mutex> lock(mMutex);
@@ -413,7 +413,7 @@ DisplayBufferPtr DisplayWayland::createDisplayBuffer(
 	}
 
 	return DisplayBufferPtr(new DumbZCopyFront(mDrmFd,
-											   width, height, bpp,
+											   width, height, bpp, offset,
 											   domId, refs));
 }
 #endif
