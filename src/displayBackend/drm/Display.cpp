@@ -75,6 +75,9 @@ Display::Display(const string& name) :
 	mName(name),
 	mStarted(false)
 {
+	if (name.empty())
+		mName = detectDrmDevice();
+
 	mDrmFd = open(mName.c_str(), O_RDWR | O_CLOEXEC);
 
 	if (mDrmFd < 0)
@@ -243,6 +246,96 @@ FrameBufferPtr Display::createFrameBuffer(DisplayBufferPtr displayBuffer,
 /*******************************************************************************
  * Private
  ******************************************************************************/
+
+bool Display::isDrmDevice(udev_device *device)
+{
+	const char *filename = udev_device_get_devnode(device);
+	const char *sysnum = udev_device_get_sysnum(device);
+	drmModeRes *res;
+	int id, fd;
+	bool ret = false;
+
+	if (!filename)
+		return false;
+
+	fd = open(filename, O_RDWR | O_CLOEXEC);
+	if (fd < 0)
+		return false;
+
+	res = drmModeGetResources(fd);
+	if (!res)
+		goto out_fd;
+
+	if (res->count_crtcs <= 0 || res->count_connectors <= 0 ||
+	    res->count_encoders <= 0)
+		goto out_res;
+
+	if (sysnum)
+		id = atoi(sysnum);
+	if (!sysnum || id < 0) {
+		LOG(mLog, DEBUG) << "Couldn't get sysnum for device " << filename;
+		goto out_res;
+	}
+
+	ret = true;
+
+out_res:
+	drmModeFreeResources(res);
+out_fd:
+	drmClose(fd);
+	return ret;
+}
+
+string Display::detectDrmDevice()
+{
+	udev *udev;
+	udev_enumerate *e;
+	udev_list_entry *entry;
+	const char *path;
+	udev_device *device, *drm_device;
+	string filename;
+
+	LOG(mLog, INFO) << "Auto detecting DRM KMS device";
+	udev = udev_new();
+	if (!udev) {
+		LOG(mLog, ERROR) << "Cannot create udev context";
+		return "";
+	}
+
+	e = udev_enumerate_new(udev);
+	udev_enumerate_add_match_subsystem(e, "drm");
+	udev_enumerate_add_match_sysname(e, "card[0-9]*");
+
+	udev_enumerate_scan_devices(e);
+	drm_device = nullptr;
+	udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e)) {
+		path = udev_list_entry_get_name(entry);
+		device = udev_device_new_from_syspath(udev, path);
+		if (!device)
+			continue;
+
+		if (!isDrmDevice(device)) {
+			udev_device_unref(device);
+			continue;
+		}
+
+		drm_device = device;
+		break;
+	}
+	udev_enumerate_unref(e);
+
+	if (!drm_device)
+	{
+		udev_unref(udev);
+		return "";
+	}
+
+	filename = udev_device_get_devnode(drm_device);
+	udev_device_unref(drm_device);
+	udev_unref(udev);
+	LOG(mLog, INFO) << "Using " << filename;
+	return filename;
+}
 
 void Display::getConnectorIds()
 {

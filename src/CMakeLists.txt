@@ -17,6 +17,8 @@ if(WITH_IVI_EXTENSION AND WITH_WAYLAND)
 	endif()
 endif()
 
+pkg_check_modules (UDev REQUIRED libudev)
+
 ################################################################################
 # Includes
 ################################################################################
@@ -92,5 +94,6 @@ endif()
 
 target_link_libraries(${PROJECT_NAME}
 	${XENBE_LIB}
+	udev
 	pthread
 )

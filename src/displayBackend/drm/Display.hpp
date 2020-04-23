@@ -23,6 +23,7 @@
 #define SRC_DRM_DEVICE_HPP_
 
 #include <atomic>
+#include <libudev.h>
 #include <thread>
 #include <unordered_map>
 
@@ -134,6 +135,8 @@ private:
 
 	std::unordered_map<std::string, uint32_t> mConnectorIds;
 
+	bool isDrmDevice(udev_device *device);
+	std::string detectDrmDevice();
 	void getConnectorIds();
 	void eventThread();
 
