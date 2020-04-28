@@ -51,7 +51,7 @@ public:
 	/**
 	 * @param name device name
 	 */
-	explicit Display(const std::string& name);
+	explicit Display(const std::string& name, bool disable_zcopy = false);
 
 	~Display();
 
@@ -131,6 +131,8 @@ private:
 	std::string mName;
 
 	bool mStarted;
+
+	bool mDisableZCopy;
 
 	std::thread mThread;
 
