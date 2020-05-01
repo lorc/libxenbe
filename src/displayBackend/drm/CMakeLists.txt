@@ -24,4 +24,4 @@ add_library(display_drm STATIC ${SOURCES})
 # Libraries
 ################################################################################
 
-target_link_libraries(display_drm ${DRM_LIBRARIES})
+target_link_libraries(display_drm ${DRM_LIBRARIES} display_common)
