@@ -22,6 +22,7 @@
 
 #include <memory>
 #include <string>
+#include <stdexcept>
 
 #include <libudev.h>
 #include <xf86drm.h>
@@ -82,70 +83,71 @@ static bool isDrmDevice(udev_device* device, XenBackend::Log& log)
 	return true;
 }
 
+struct udevError : std::runtime_error
+{
+	udevError(const char*msg) : std::runtime_error(msg) {};
+};
+
+void check_fail(bool fail, const char* msg)
+{
+	if (fail)
+	{
+		throw new udevError(msg);
+	}
+}
+
 std::string detectDrmDevice()
 {
 	XenBackend::Log log("DrmDetector");
 
 	LOG(log, INFO) << "Auto detecting DRM KMS device";
-	std::unique_ptr<struct udev, decltype(&udev_unref)>
-			udev(udev_new(), &udev_unref);
-	if (!udev)
-	{
-		LOG(log, ERROR) << "Cannot create udev context";
-		return "";
-	}
+	try {
+		std::unique_ptr<struct udev, decltype(&udev_unref)>
+				udev(udev_new(), &udev_unref);
+		check_fail(!udev, "Cannot create udev context");
 
-	std::unique_ptr<udev_enumerate, decltype(&udev_enumerate_unref)>
-			e(udev_enumerate_new(udev.get()), udev_enumerate_unref);
-	if (!e)
-	{
-		LOG(log, ERROR) << "Cannot create udev enumerator";
-		return "";
-	}
+		std::unique_ptr<udev_enumerate, decltype(&udev_enumerate_unref)>
+				e(udev_enumerate_new(udev.get()), udev_enumerate_unref);
+		check_fail(!e, "Cannot create udev enumerator");
 
-	if (udev_enumerate_add_match_subsystem(e.get(), "drm"))
-	{
-		LOG(log, ERROR) << "Error adding subsystem match";
-		return "";
-	}
+		check_fail(udev_enumerate_add_match_subsystem(e.get(), "drm"),
+				   "Error adding subsystem match");
+		check_fail(udev_enumerate_add_match_sysname(e.get(), "card[0-9]*"),
+				   "Error adding sysname match");
+		check_fail(udev_enumerate_scan_devices(e.get()),
+				   "Error scanning for udev devices");
 
-	if (udev_enumerate_add_match_sysname(e.get(), "card[0-9]*"))
-	{
-		LOG(log, ERROR) << "Error adding sysname match";
-		return "";
-	}
-
-	if (udev_enumerate_scan_devices(e.get()))
-	{
-		LOG(log, ERROR) << "Error scanning for udev devices";
-		return "";
-	}
-
-	udev_list_entry *entry;
-	udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e.get()))
-	{
-		auto path = udev_list_entry_get_name(entry);
-		if (!path)
+		udev_list_entry *entry;
+		udev_list_entry_foreach(entry, udev_enumerate_get_list_entry(e.get()))
 		{
-			continue;
+			auto path = udev_list_entry_get_name(entry);
+			if (!path)
+			{
+				continue;
+			}
+
+			std::unique_ptr<struct udev_device, decltype(&udev_device_unref)>
+					device(udev_device_new_from_syspath(udev.get(), path),
+						   udev_device_unref);
+
+			if (!device)
+			{
+				continue;
+			}
+
+			if (isDrmDevice(device.get(), log))
+			{
+				auto filename = udev_device_get_devnode(device.get());
+				LOG(log, INFO) << "Using " << filename;
+
+				return filename;
+			}
 		}
-
-		std::unique_ptr<struct udev_device, decltype(&udev_device_unref)>
-				device(udev_device_new_from_syspath(udev.get(), path),
-					   udev_device_unref);
-
-		if (!device)
-		{
-			continue;
-		}
-
-		if (isDrmDevice(device.get(), log))
-		{
-			auto filename = udev_device_get_devnode(device.get());
-			LOG(log, INFO) << "Using " << filename;
-
-			return filename;
-		}
+	}
+	catch(udevError &err)
+	{
+		LOG(log, ERROR) << err.what();
+		return "";
 	}
 
 	LOG(log, WARNING) << "Could not auto detect DRM device";
